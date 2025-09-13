@@ -1,6 +1,10 @@
-from flask import Flask, render_template_string, request
+from flask import Flask, render_template_string, request, redirect
+import csv
+from datetime import datetime
 
 app = Flask(__name__)
+
+CSV_FILE = "records.csv"
 
 template = """
 <!doctype html>
@@ -9,13 +13,17 @@ template = """
   <title>Kisses Timer — Mrs. Shrestha</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f9fafb; color: #111; text-align: center; padding: 40px; }
-    .box { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+    .box { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
     h1 { color: #2563eb; }
     button { padding: 10px 20px; margin: 10px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; }
     .start { background: #22c55e; color: white; }
     .stop { background: #ef4444; color: white; }
     .reset { background: #6b7280; color: white; }
+    .save { background: #2563eb; color: white; }
     .time { font-size: 32px; margin: 20px 0; font-weight: bold; }
+    table { margin: 20px auto; border-collapse: collapse; width: 90%; }
+    th, td { border: 1px solid #ccc; padding: 8px; }
+    th { background: #2563eb; color: white; }
   </style>
 </head>
 <body>
@@ -34,6 +42,32 @@ template = """
       <h2>No. of kisses Mrs. Shrestha owes me = {{ result.total_with_tax }}</h2>
       <p>Husband Tax = 13% ({{ result.tax }} minutes)</p>
       <p>Raw Time = {{ result.minutes }} minutes</p>
+      <form method="post">
+        <input type="hidden" name="save_minutes" value="{{ result.minutes }}">
+        <input type="hidden" name="save_tax" value="{{ result.tax }}">
+        <input type="hidden" name="save_total" value="{{ result.total_with_tax }}">
+        <button type="submit" name="action" value="save" class="save">Save Record</button>
+      </form>
+    {% endif %}
+
+    {% if records %}
+      <h3>Saved Records</h3>
+      <table>
+        <tr>
+          <th>Date</th>
+          <th>Raw Minutes</th>
+          <th>Husband Tax</th>
+          <th>Total Kisses</th>
+        </tr>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.date }}</td>
+          <td>{{ r.minutes }}</td>
+          <td>{{ r.tax }}</td>
+          <td>{{ r.total }}</td>
+        </tr>
+        {% endfor %}
+      </table>
     {% endif %}
   </div>
 
@@ -65,7 +99,6 @@ template = """
         clearInterval(timerInterval);
         timerInterval = null;
 
-        // send elapsed minutes to server
         const timerText = document.getElementById('timer').innerText;
         const parts = timerText.split(':');
         const totalMinutes = (parseInt(parts[0]) * 60) + parseInt(parts[1]) + (parseInt(parts[2]) / 60);
@@ -85,25 +118,50 @@ template = """
 </html>
 """
 
+def read_records():
+    records = []
+    try:
+        with open(CSV_FILE, newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                records.append(row)
+    except FileNotFoundError:
+        pass
+    return records
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     result = None
+    records = read_records()
 
     if request.method == "POST":
-        try:
-            minutes = float(request.form.get("minutes", 0))
-            tax = round(minutes * 0.13, 2)
-            total_with_tax = round(minutes + tax, 2)
+        if request.form.get("action") == "save":
+            # Save record to CSV
+            date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            minutes = request.form.get("save_minutes")
+            tax = request.form.get("save_tax")
+            total = request.form.get("save_total")
+            with open(CSV_FILE, "a", newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=["date","minutes","tax","total"])
+                if f.tell() == 0:
+                    writer.writeheader()
+                writer.writerow({"date": date, "minutes": minutes, "tax": tax, "total": total})
+            records = read_records()
+        else:
+            # Timer stop calculation
+            try:
+                minutes = float(request.form.get("minutes", 0))
+                tax = round(minutes * 0.13, 2)
+                total_with_tax = round(minutes + tax, 2)
+                result = {
+                    "minutes": round(minutes, 2),
+                    "tax": tax,
+                    "total_with_tax": total_with_tax
+                }
+            except Exception:
+                pass
 
-            result = {
-                "minutes": round(minutes, 2),
-                "tax": tax,
-                "total_with_tax": total_with_tax
-            }
-        except Exception:
-            pass
-
-    return render_template_string(template, result=result)
+    return render_template_string(template, result=result, records=records)
 
 if __name__ == "__main__":
     app.run(debug=True)
