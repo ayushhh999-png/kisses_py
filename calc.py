@@ -1,6 +1,7 @@
-from flask import Flask, render_template_string, request, redirect
+from flask import Flask, render_template_string, request
 import csv
 from datetime import datetime
+import os
 
 app = Flask(__name__)
 
@@ -32,7 +33,7 @@ template = """
     <div class="time" id="timer">00:00:00</div>
 
     <form method="post" id="stopForm">
-      <input type="hidden" name="minutes" id="minutesInput">
+      <input type="hidden" name="minutes" id="minutesInput" value="{{ result.minutes if result else '' }}">
       <button type="button" onclick="startTimer()" class="start">Start</button>
       <button type="button" onclick="stopTimer()" class="stop">Stop</button>
       <button type="button" onclick="resetTimer()" class="reset">Reset</button>
@@ -120,45 +121,51 @@ template = """
 
 def read_records():
     records = []
-    try:
+    if os.path.exists(CSV_FILE):
         with open(CSV_FILE, newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 records.append(row)
-    except FileNotFoundError:
-        pass
     return records
 
-@app.route("/", methods=["GET", "POST"])
+def save_record(minutes, tax, total):
+    file_exists = os.path.exists(CSV_FILE)
+    with open(CSV_FILE, "a", newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=["date","minutes","tax","total"])
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow({
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "minutes": minutes,
+            "tax": tax,
+            "total": total
+        })
+
+@app.route("/", methods=["GET","POST"])
 def index():
     result = None
     records = read_records()
 
     if request.method == "POST":
-        if request.form.get("action") == "save":
-            # Save record to CSV
-            date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            minutes = request.form.get("save_minutes")
-            tax = request.form.get("save_tax")
-            total = request.form.get("save_total")
-            with open(CSV_FILE, "a", newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=["date","minutes","tax","total"])
-                if f.tell() == 0:
-                    writer.writeheader()
-                writer.writerow({"date": date, "minutes": minutes, "tax": tax, "total": total})
+        action = request.form.get("action")
+        if action == "save":
+            save_record(
+                request.form.get("save_minutes"),
+                request.form.get("save_tax"),
+                request.form.get("save_total")
+            )
             records = read_records()
         else:
-            # Timer stop calculation
             try:
                 minutes = float(request.form.get("minutes", 0))
                 tax = round(minutes * 0.13, 2)
-                total_with_tax = round(minutes + tax, 2)
+                total_with_tax = round(minutes + tax)  # <- rounded total kisses
                 result = {
-                    "minutes": round(minutes, 2),
+                    "minutes": round(minutes,2),
                     "tax": tax,
                     "total_with_tax": total_with_tax
                 }
-            except Exception:
+            except:
                 pass
 
     return render_template_string(template, result=result, records=records)
