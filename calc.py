@@ -23,11 +23,12 @@ template = """
     .reset { background: #6b7280; color: white; }
     .save { background: #2563eb; color: white; }
     .delete { background: #dc2626; color: white; }
+    .manual { background: #f59e0b; color: white; }
     .time { font-size: 32px; margin: 20px 0; font-weight: bold; }
     table { margin: 20px auto; border-collapse: collapse; width: 95%; }
     th, td { border: 1px solid #ccc; padding: 8px; }
     th { background: #2563eb; color: white; }
-    input[type="password"] { padding: 4px; width: 120px; }
+    input[type="password"], input[type="text"], input[type="number"] { padding: 4px; width: 120px; }
   </style>
 </head>
 <body>
@@ -59,7 +60,7 @@ template = """
       <table>
         <tr>
           <th>Date</th>
-          <th>Raw Minutes</th>
+          <th>Minutes</th>
           <th>Husband Tax</th>
           <th>Total Kisses</th>
           <th>Delete</th>
@@ -81,6 +82,13 @@ template = """
         {% endfor %}
       </table>
     {% endif %}
+
+    <h3>Manual Add Record</h3>
+    <form method="post">
+      <input type="number" step="0.01" name="manual_minutes" placeholder="Minutes" required>
+      <button type="submit" name="action" value="manual" class="manual">Add Record</button>
+    </form>
+
   </div>
 
   <script>
@@ -173,18 +181,24 @@ def index():
                 request.form.get("save_tax"),
                 request.form.get("save_total")
             )
-            records = read_records()
         elif action == "delete":
             password = request.form.get("password","")
             if password == PASSWORD:
                 delete_date = request.form.get("delete_date")
                 delete_record(delete_date)
-                records = read_records()
+        elif action == "manual":
+            try:
+                manual_minutes = float(request.form.get("manual_minutes",0))
+                tax = round(manual_minutes * 0.13,2)
+                total_with_tax = round(manual_minutes + tax)
+                save_record(manual_minutes, tax, total_with_tax)
+            except:
+                pass
         else:
             try:
                 minutes = float(request.form.get("minutes", 0))
                 tax = round(minutes * 0.13, 2)
-                total_with_tax = round(minutes + tax)  # rounded total kisses
+                total_with_tax = round(minutes + tax)
                 result = {
                     "minutes": round(minutes,2),
                     "tax": tax,
@@ -192,6 +206,8 @@ def index():
                 }
             except:
                 pass
+
+        records = read_records()
 
     return render_template_string(template, result=result, records=records)
 
