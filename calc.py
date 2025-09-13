@@ -6,6 +6,7 @@ import os
 app = Flask(__name__)
 
 CSV_FILE = "records.csv"
+PASSWORD = "aayushalovesayush"
 
 template = """
 <!doctype html>
@@ -14,17 +15,19 @@ template = """
   <title>Kisses Timer — Mrs. Shrestha</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f9fafb; color: #111; text-align: center; padding: 40px; }
-    .box { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+    .box { max-width: 700px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
     h1 { color: #2563eb; }
-    button { padding: 10px 20px; margin: 10px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; }
+    button { padding: 8px 16px; margin: 4px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
     .start { background: #22c55e; color: white; }
     .stop { background: #ef4444; color: white; }
     .reset { background: #6b7280; color: white; }
     .save { background: #2563eb; color: white; }
+    .delete { background: #dc2626; color: white; }
     .time { font-size: 32px; margin: 20px 0; font-weight: bold; }
-    table { margin: 20px auto; border-collapse: collapse; width: 90%; }
+    table { margin: 20px auto; border-collapse: collapse; width: 95%; }
     th, td { border: 1px solid #ccc; padding: 8px; }
     th { background: #2563eb; color: white; }
+    input[type="password"] { padding: 4px; width: 120px; }
   </style>
 </head>
 <body>
@@ -59,6 +62,7 @@ template = """
           <th>Raw Minutes</th>
           <th>Husband Tax</th>
           <th>Total Kisses</th>
+          <th>Delete</th>
         </tr>
         {% for r in records %}
         <tr>
@@ -66,6 +70,13 @@ template = """
           <td>{{ r.minutes }}</td>
           <td>{{ r.tax }}</td>
           <td>{{ r.total }}</td>
+          <td>
+            <form method="post" style="display:inline;">
+              <input type="hidden" name="delete_date" value="{{ r.date }}">
+              <input type="password" name="password" placeholder="Password">
+              <button type="submit" name="action" value="delete" class="delete">Delete</button>
+            </form>
+          </td>
         </tr>
         {% endfor %}
       </table>
@@ -141,6 +152,14 @@ def save_record(minutes, tax, total):
             "total": total
         })
 
+def delete_record(delete_date):
+    records = read_records()
+    records = [r for r in records if r['date'] != delete_date]
+    with open(CSV_FILE, "w", newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=["date","minutes","tax","total"])
+        writer.writeheader()
+        writer.writerows(records)
+
 @app.route("/", methods=["GET","POST"])
 def index():
     result = None
@@ -155,11 +174,17 @@ def index():
                 request.form.get("save_total")
             )
             records = read_records()
+        elif action == "delete":
+            password = request.form.get("password","")
+            if password == PASSWORD:
+                delete_date = request.form.get("delete_date")
+                delete_record(delete_date)
+                records = read_records()
         else:
             try:
                 minutes = float(request.form.get("minutes", 0))
                 tax = round(minutes * 0.13, 2)
-                total_with_tax = round(minutes + tax)  # <- rounded total kisses
+                total_with_tax = round(minutes + tax)  # rounded total kisses
                 result = {
                     "minutes": round(minutes,2),
                     "tax": tax,
